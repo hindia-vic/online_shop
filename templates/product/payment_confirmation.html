@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% load custom_filters %}
+{% block title %}Orders{% endblock title %}
+{% block content %}
+<p> Your order_id is:{{order.id}}</p>
+<p> Total_cost: ${{order.get_total_cost}}</p>
+<form action="{% url 'charge' order.id %}" method="post">
+    {% csrf_token %}
+    <script src="https://checkout.stripe.com/checkout.js" class="stripe-button" data-key="{{ stripe_key }}"
+        data-description="Make payment" data-amount="{{ order.get_total_cost|floatformat:2|multiply:100}}"
+        data-locale="auto">
+        </script>
+</form>
+<a href="{% url 'initiate_payment' order.id %}" class="btn btn-primary">use Mpesa</a>
+{% endblock content %}

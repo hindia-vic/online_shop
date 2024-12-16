@@ -1,0 +1,19 @@
+
+{% extends 'base.html'%}
+{% block title %}<h1>Order confirmation</h1>{% endblock title %}
+{% block content %}
+<h2>You order has been confirmed</h2>
+<h1>order ID: #{{order.id}}</h1>
+<h2>items ordered:</h2>
+<ul>
+    {% for item in order.items.all %}
+    <li>
+        <strong>{{item.quantity}}x{{item.product.name}}</strong>
+        <br>
+        <span>item_price:{{item.price}}</span>
+    </li>
+    {% endfor %}
+</ul>
+<p> Total_cost: ${{order.get_total_cost}}</p>
+<a href="{% url 'orders' order.id %}">Proceed to make payments</a>
+{% endblock content %}

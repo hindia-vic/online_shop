@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{%block title %} My Cart {% endblock title%}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">my cart </h1>
+{% if cart %}
+<ul class="space-y-4">
+    {% for item in cart.items.all %}
+    <li class="flex items-center p-4">
+        {% if item.product.image.url %}
+        <img src='{{item.product.image.url}}' alt="{{image.product.name}}" class="w-24" />
+        {%else%}
+        <h1>{{item.product.name}} has no image</h1>
+        {% endif %}
+        <div class="flex-grow">
+            <h3>Name:{{item.product.name}}</h3>
+            <p>Description:{{item.product.description}}</p>
+            <p>Price:${{item.product.price}}</p>
+            <p>Quantity:{{item.quantity}}</p>
+            <div class='flex-shrink'>
+                <form action="{% url 'remove_cart' item.id %}" method="post">
+                    {% csrf_token %}
+                    <button type="submit" class="bg-red-600 text-white px-4 py-2 rounded">Remove</button>
+                </form>
+            </div>
+
+        </div>
+    </li>
+    {% endfor %}
+    <div>
+        <p>Total Price:${{cart.get_total_price}}</p>
+    </div>
+    <form action="{% url 'order_create' %}" method="post">
+        {% csrf_token %}
+        <button type="submit">Checkout</button>
+    </form>
+</ul>
+{% else %}
+<p>Cart is empty</p>
+{% endif %}
+{% endblock content %}

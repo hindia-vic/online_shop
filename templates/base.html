@@ -13,6 +13,18 @@
     {% include 'product/nav.html' %}
     </header>
     <main class="container mx-auto py-8  flex-grow">
+{% if user.is_authenticated %}
+<p>Hi {{ user.username }}!</p>
+<form action="{% url 'logout' %}" method='post'>
+    {% csrf_token %}
+    <button type='submit'>logout</button>
+</form>
+{% else %}
+<p>You are not logged in.</p>
+<a href="{% url 'login' %}">Log In</a>
+<h1>I do have an account </h1>
+<a href="{% url 'register' %}">Sign Up</a>
+{% endif %}
     {% block content %}
   
 

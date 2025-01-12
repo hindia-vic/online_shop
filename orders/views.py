@@ -91,7 +91,6 @@ def get_mpesa_access_token():
     response = requests.get(api_url, auth=(consumer_key, consumer_secret))
     if response.status_code == 200:
         access_token = response.json().get('access_token')
-        print(f"Access Token: {access_token}")
         return access_token
   
     else:
@@ -99,7 +98,7 @@ def get_mpesa_access_token():
         raise Exception('Failed to get access token')
        
 
-def lipa_na_mpesa(phone_number, amount, account_reference, transaction_desc):
+def lipa_na_mpesa(phone_number, amount,transaction_desc,order_id):
     access_token = get_mpesa_access_token()
     api_url = 'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest'
     headers = {
@@ -119,8 +118,8 @@ def lipa_na_mpesa(phone_number, amount, account_reference, transaction_desc):
         "PartyA": phone_number,  # Phone number initiating the payment
         "PartyB": settings.MPESA_SHORTCODE,
         "PhoneNumber": phone_number,
-        "CallBackURL": "https://7a19-102-211-145-195.ngrok-free.app/order/callback/",  # Replace with your callback endpoint
-        "AccountReference": account_reference,
+        "CallBackURL": "https://d755-102-211-145-195.ngrok-free.app/order/callback/",  # Replace with your callback endpoint
+        "AccountReference":order_id,
         "TransactionDesc": transaction_desc,
     }
 
@@ -128,7 +127,7 @@ def lipa_na_mpesa(phone_number, amount, account_reference, transaction_desc):
     return response.json()
 def initiate_payment(request,order_id):
     order = get_object_or_404(Order, id=order_id)
-    price = int(order.get_total_cost() * 100)
+    price = int(order.get_total_cost())
     if request.method == 'POST':
         phone_number = request.POST.get('phone_number')  # Input from user
         amount =price # Input from user
@@ -142,28 +141,35 @@ def initiate_payment(request,order_id):
     
     return render(request, 'product/initiate_payment.html')
 
-@csrf_exempt  # Disable CSRF validation for this view
+@csrf_exempt
 def mpesa_callback(request):
     if request.method == 'POST':
-        # Parse the incoming JSON data
         data = json.loads(request.body)
+        print("M-Pesa Callback Data:", data)  # Log callback data
         
-        # Log the data or handle it as needed
-        print("M-Pesa Callback Data:", data)
+        result_code = data.get('Body', {}).get('stkCallback', {}).get('ResultCode')
+        print("Result Code:", result_code)  # Log ResultCode
 
-        # You can access specific fields from the data
-        # For example, you might want to check the transaction status
-        transaction_status = data.get('Body', {}).get('stkCallback', {}).get('ResultCode')
-        
-        # Implement your logic based on the transaction status
-        if transaction_status == '0':  # Assuming '0' means success
-            # Handle successful payment, e.g., update order status
-            pass
+        transaction_details = data.get('Body', {}).get('stkCallback', {}).get('CallbackMetadata', {}).get('Item', [])
+        print("Transaction Details:", transaction_details)  # Log CallbackMetadata
+
+        order_id = None
+        for item in transaction_details:
+            if item.get('Name') == 'AccountReference':
+                order_id = item.get('Value')
+                print(f"Order ID from callback: {order_id}")  # Log extracted order ID
+                break
+
+        if result_code == 0:  # Successful transaction
+            try:
+                order = Order.objects.get(id=order_id)
+                order.paid = True
+                order.save()
+                print(f"Order {order_id} marked as paid.")  # Log success
+            except Order.DoesNotExist:
+                print(f"Order with ID {order_id} does not exist.")  # Log failure
         else:
-            # Handle failed payment
-            pass
-
-        # Return a success response to M-Pesa
+            print("Payment failed or was not successful.")  # Log unsuccessful payment
+        
         return JsonResponse({'status': 'success'}, status=200)
-
     return JsonResponse({'status': 'method not allowed'}, status=405)

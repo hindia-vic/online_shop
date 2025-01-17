@@ -1,9 +1,78 @@
 {% extends 'base.html' %}
 {% block content %}
-<form method="post">
-    {% csrf_token %}
-    <label for="phone_number">Phone Number:</label>
-    <input type="text" id="phone_number" name="phone_number" required><br><br>
-    <button type="submit">Pay Now</button>
-</form>
+<body class="flex items-center justify-center min-h-screen bg-gray-100">
+    <div class="bg-white shadow-md rounded-lg p-6 w-full max-w-md">
+      <h3 class="text-center text-xl font-semibold mb-6">Make Payment</h3>
+
+      <!-- Display Error Message -->
+      {% if error_message %}
+      <div class="bg-red-100 text-red-800 px-4 py-2 rounded-lg mb-4 text-center">
+        {{ error_message }}
+      </div>
+      {% endif %}
+
+      <!-- Display Success Message -->
+      {% if success_message %}
+      <div class="bg-green-100 text-green-800 px-4 py-2 rounded-lg mb-4 text-center">
+        {{ success_message }}
+      </div>
+      {% endif %}
+
+      <form
+        method="POST"
+        class="space-y-4"
+        novalidate
+        onsubmit="handleFormSubmit(event)"
+      >
+        {% csrf_token %}
+        <label for="phone_number">Phone Number:</label>
+        <input type="text" id="phone_number" name="phone_number" required><br><br>
+        <button
+          type="submit"
+          class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg flex justify-center items-center"
+          id="submitButton"
+        >
+          <svg
+            id="spinner"
+            class="hidden w-5 h-5 animate-spin text-white mr-2"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+            ></circle>
+            <path
+              class="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8v8H4z"
+            ></path>
+          </svg>
+          <span id="buttonText">Pay</span>
+        </button>
+      </form>
+    </div>
+
+    <script>
+      function handleFormSubmit(event) {
+        event.preventDefault();
+
+        const submitButton = document.getElementById("submitButton");
+        const buttonText = document.getElementById("buttonText");
+        const spinner = document.getElementById("spinner");
+
+        buttonText.textContent = "Processing...";
+        spinner.classList.remove("hidden");
+        submitButton.disabled = true;
+
+        // Submit the form
+        event.target.submit();
+      }
+    </script>
+  </body>
 {% endblock content %}

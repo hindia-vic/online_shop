@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block content %}
+<body class="flex items-center justify-center min-h-screen bg-gray-100">
+    <div class="bg-white shadow-md rounded-lg p-6 w-full max-w-lg">
+      {% if error_message %}
+      <div
+        class="bg-red-100 text-red-800 text-center rounded-lg py-2 px-4 mb-4"
+      >
+        {{ error_message }}
+      </div>
+      {% endif %}
+      <h3 class="text-center text-xl font-semibold mb-4" id="confirm-text">
+        Confirm Your Payment
+      </h3>
+      <div class="text-center mt-3" id="status-container">
+        <h5
+          class="bg-blue-100 text-blue-800 inline-block rounded-lg py-2 px-4 mb-4"
+          id="initial-message"
+        >
+          M-Pesa STK Push sent successfully. Enter your M-Pesa PIN to complete
+          the transaction.
+        </h5>
+        <div
+          class="inline-block w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"
+          id="loading-spinner"
+        ></div>
+        <p class="mt-2 text-gray-600" id="status-message">
+          Waiting for confirmation...
+        </p>
+      </div>
+      <div class="text-center mt-6">
+        <a
+          href="javascript:void(0);"
+          class="hidden bg-yellow-400 hover:bg-yellow-500 text-white font-bold py-2 px-4 rounded-lg"
+          id="retry-button"
+          onclick="location.reload();"
+        >
+          Retry Payment
+        </a>
+      </div>
+    </div>
+{% endblock content %}

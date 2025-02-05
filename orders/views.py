@@ -6,11 +6,15 @@ from django.conf import settings
 from django.views.generic.base import TemplateView
 from django.http import JsonResponse,HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
+from django.db import transaction
 import json 
 import stripe
 import requests
 import base64
 import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 MPESA_SHORTCODE=settings.MPESA_SHORTCODE
@@ -123,7 +127,7 @@ def lipa_na_mpesa(phone_number, amount,transaction_desc,order_id):
         "PartyA": phone_number,  # Phone number initiating the payment
         "PartyB": settings.MPESA_SHORTCODE,
         "PhoneNumber": phone_number,
-        "CallBackURL": "https://d755-102-211-145-195.ngrok-free.app/order/callback/",  # Replace with your callback endpoint
+        "CallBackURL": "https://8197-102-211-145-195.ngrok-free.app/order/callback/",  # Replace with your callback endpoint
         "AccountReference":order_id,
         "TransactionDesc": transaction_desc,
     }
@@ -141,47 +145,16 @@ def initiate_payment(request,order_id):
         
         if response.get('ResponseCode') == '0':
             checkout_request_id = response["CheckoutRequestID"]
-            return render(request, "product/pending.html", {"checkout_request_id": checkout_request_id})
+            success_message = "M-Pesa STK Push sent successfully. Enter your M-Pesa PIN to complete the transaction."
+            return render(
+                request, "product/pending.html", 
+                {"checkout_request_id": checkout_request_id, "success_message": success_message}
+            )
         else:
             error_message = response.get("errorMessage", "Failed to send STK push. Please try again.")
             return render(request, "product/initiate_payment.html", {"error_message": error_message})
     
     return render(request, 'product/initiate_payment.html')
-
-"""@csrf_exempt
-def mpesa_callback(request):
-    if request.method == 'POST':
-        data = json.loads(request.body)
-        print("M-Pesa Callback Data:", data)  # Log callback data
-        
-        result_code = data.get('Body', {}).get('stkCallback', {}).get('ResultCode')
-        print("Result Code:", result_code)  # Log ResultCode
-
-        transaction_details = data.get('Body', {}).get('stkCallback', {}).get('CallbackMetadata', {}).get('Item', [])
-        print("Transaction Details:", transaction_details)  # Log CallbackMetadata
-
-        order_id = None
-        for item in transaction_details:
-            if item.get('Name') == 'AccountReference':
-                order_id = item.get('Value')
-                print(f"Order ID from callback: {order_id}")  # Log extracted order ID
-                break
-
-        if result_code == 0:  # Successful transaction
-            try:
-                order = Order.objects.get(id=order_id)
-                order.paid = True
-                order.save()
-                print(f"Order {order_id} marked as paid.")  # Log success
-            except Order.DoesNotExist:
-                print(f"Order with ID {order_id} does not exist.")  # Log failure
-        else:
-            print("Payment failed or was not successful.")  # Log unsuccessful payment
-        
-        return JsonResponse({'status': 'success'}, status=200)
-    return JsonResponse({'status': 'method not allowed'}, status=405)
-    """
-
 
 def query_stk_push(checkout_request_id):
     print("Quering...")
@@ -216,51 +189,68 @@ def query_stk_push(checkout_request_id):
 def stk_status_view(request):
     if request.method == 'POST':
         try:
-            # Parse the JSON body
             data = json.loads(request.body)
             checkout_request_id = data.get('checkout_request_id')
-            print("CheckoutRequestID:", checkout_request_id)
 
-            # Query the STK push status using your backend function
-            status = query_stk_push(checkout_request_id)
+            status_response = query_stk_push(checkout_request_id)
 
-            # Return the status as a JSON response
-            return JsonResponse({"status": status})
+            result_code = status_response.get("ResultCode")
+
+            if result_code == '0':
+                return JsonResponse({"status": "success", "message": "Payment successful. Redirecting..."})
+            elif result_code == '1':
+                return JsonResponse({"status": "failed", "message": "Payment failed. Please try again."})
+            else:
+                return JsonResponse({"status": "pending", "message": "Waiting for confirmation..."})
+
         except json.JSONDecodeError:
             return JsonResponse({"error": "Invalid JSON body"}, status=400)
 
     return JsonResponse({"error": "Invalid request method"}, status=405)
 
-@csrf_exempt  # To allow POST requests from external sources like M-Pesa
+@csrf_exempt
 def payment_callback(request):
     if request.method != "POST":
-        return HttpResponseBadRequest("Only POST requests are allowed")
+        return HttpResponseBadRequest("Only POST requests allowed.")
 
     try:
-        callback_data = json.loads(request.body)  # Parse the request body
-        result_code = callback_data["Body"]["stkCallback"]["ResultCode"]
+        callback_data = json.loads(request.body)
+        logger.info(f"Received M-Pesa Callback: {json.dumps(callback_data, indent=4)}")
 
+        result_code = callback_data["Body"]["stkCallback"]["ResultCode"]
         if result_code == 0:
-            # Successful transaction
             checkout_id = callback_data["Body"]["stkCallback"]["CheckoutRequestID"]
             metadata = callback_data["Body"]["stkCallback"]["CallbackMetadata"]["Item"]
 
             amount = next(item["Value"] for item in metadata if item["Name"] == "Amount")
             mpesa_code = next(item["Value"] for item in metadata if item["Name"] == "MpesaReceiptNumber")
-            phone = next(item["Value"] for item in metadata if item["Name"] == "PhoneNumber")
+            phone_number = next(item["Value"] for item in metadata if item["Name"] == "PhoneNumber")
 
-            # Save transaction to the database
-            Transaction.objects.create(
-                amount=amount, 
-                checkout_id=checkout_id, 
-                mpesa_code=mpesa_code, 
-                phone_number=phone, 
-                status="Success"
-            )
-            return JsonResponse({"ResultCode": 0, "ResultDesc": "Payment successful"})
+            with transaction.atomic():
+                if Transaction.objects.filter(mpesa_code=mpesa_code).exists():
+                    return JsonResponse({"ResultCode": 1, "ResultDesc": "Duplicate transaction"})
 
-        # Payment failed
+                order = Order.objects.filter(transactions__checkout_id=callback_data["Body"]["stkCallback"]["MerchantRequestID"]).first()
+
+                if not order:
+                    return JsonResponse({"ResultCode": 1, "ResultDesc": "Order not found"})
+
+                Transaction.objects.create(
+                    amount=amount,
+                    order=order,
+                    checkout_id=checkout_id,
+                    mpesa_code=mpesa_code,
+                    phone_number=phone_number,
+                    status="completed",
+                )
+
+                order.mark_as_paid()  # Ensure order is marked as paid
+                return JsonResponse({"ResultCode": 0, "ResultDesc": "Payment successfully processed."})
+
         return JsonResponse({"ResultCode": result_code, "ResultDesc": "Payment failed"})
 
-    except (json.JSONDecodeError, KeyError) as e:
-        return HttpResponseBadRequest(f"Invalid request data: {str(e)}")
+    except json.JSONDecodeError:
+        return HttpResponseBadRequest("Invalid JSON data received.")
+    except KeyError as e:
+        return HttpResponseBadRequest(f"Missing key in response: {str(e)}")
+
